@@ -1,4 +1,4 @@
-const CACHE = 'swale-v2';
+const CACHE = 'swale-v3';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
@@ -16,6 +16,17 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.url.includes('api.open-meteo.com')) {
     e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+    return;
+  }
+  // navigations always bypass the HTTP cache so a new deploy is picked up immediately
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request.url, { cache: 'no-store' }).then(r => {
+        const clone = r.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone));
+        return r;
+      }).catch(() => caches.match(e.request))
+    );
     return;
   }
   e.respondWith(
