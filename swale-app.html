@@ -892,6 +892,15 @@ body {
   </div>
 </div>
 
+<!-- Lock gate: passkey (Face ID) with PIN fallback -->
+<div id="lockGate" style="display:none;position:fixed;inset:0;z-index:9999;background:#0d1410;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:32px;text-align:center">
+  <img src="swale-logo-white.png" alt="SWALE" style="width:150px;opacity:0.95">
+  <div id="lockSub" style="font-size:13px;color:#8fa595">Walsh Residence · locked</div>
+  <button id="lockBio" style="font:inherit;font-size:15px;font-weight:600;padding:13px 30px;border-radius:12px;border:none;background:#22c55e;color:#08120c;cursor:pointer">Unlock with Face ID</button>
+  <button id="lockPin" style="font:inherit;font-size:13px;padding:8px 16px;border-radius:10px;border:1px solid rgba(255,255,255,0.2);background:transparent;color:#8fa595;cursor:pointer">Use PIN</button>
+  <div id="lockMsg" style="font-size:12px;color:#e0b34a;min-height:16px"></div>
+</div>
+
 <!-- Header -->
 <div class="header">
   <div class="header-left">
@@ -1137,6 +1146,15 @@ body {
     <div class="setting-row"><span class="setting-label">Support</span><span class="setting-value" style="color:var(--green)">jack@swale.bio</span></div>
     <div class="setting-row"><span class="setting-label">App version</span><span class="setting-value" id="settBuild">--</span></div>
   </div>
+  <!-- MASTER-ONLY:START -->
+  <div class="section-header"><span class="section-title">Customers</span></div>
+  <div class="setting-group">
+    <a class="setting-row" href="/c/clamshack/" style="text-decoration:none;color:inherit">
+      <span class="setting-label">The Clamshack · Port Orchard</span>
+      <span class="setting-value" style="color:var(--green)">View as customer →</span>
+    </a>
+  </div>
+  <!-- MASTER-ONLY:END -->
 </div>
 
 <!-- Toast -->
@@ -2138,6 +2156,51 @@ window.addEventListener('DOMContentLoaded', () => {
   fetchWeather();
   setInterval(fetchWeather, 15 * 60 * 1000);
 });
+
+// ---- lock gate: passkey (Face ID) with PIN fallback ----
+// NOTE: client-side gate = UX lock. Cryptographic enforcement arrives with the CF Worker.
+const AUTH_PIN = '7645'; // SOIL
+const CRED_KEY = 'swale_lock_cred';
+const gateEl = document.getElementById('lockGate');
+function b64uToBuf(s){s=s.replace(/-/g,'+').replace(/_/g,'/');const b=atob(s);const a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a.buffer;}
+function bufToB64u(buf){return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+function unlockApp(){sessionStorage.setItem('swale_unlocked','1');gateEl.style.display='none';}
+function gateMsg(t){document.getElementById('lockMsg').textContent=t;}
+async function bioUnlock(){
+  try{
+    const stored=localStorage.getItem(CRED_KEY);
+    const challenge=crypto.getRandomValues(new Uint8Array(32));
+    if(stored){
+      await navigator.credentials.get({publicKey:{challenge,
+        allowCredentials:[{id:b64uToBuf(stored),type:'public-key'}],
+        userVerification:'required',timeout:60000}});
+      unlockApp();
+    }else{
+      const cred=await navigator.credentials.create({publicKey:{challenge,
+        rp:{name:'Swale Intelligence',id:location.hostname},
+        user:{id:crypto.getRandomValues(new Uint8Array(16)),name:'walsh',displayName:'Walsh Residence'},
+        pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+        authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required'},
+        timeout:60000}});
+      localStorage.setItem(CRED_KEY,bufToB64u(cred.rawId));
+      unlockApp();
+    }
+  }catch(err){gateMsg('Face ID cancelled or unavailable. Try PIN.');}
+}
+function pinUnlock(){
+  const p=prompt('Enter PIN');
+  if(p===AUTH_PIN)unlockApp();else if(p!==null)gateMsg('Wrong PIN.');
+}
+(function initGate(){
+  if(sessionStorage.getItem('swale_unlocked')==='1')return;
+  gateEl.style.display='flex';
+  const hasWebAuthn=!!window.PublicKeyCredential;
+  const bioBtn=document.getElementById('lockBio');
+  if(!hasWebAuthn){bioBtn.style.display='none';}
+  else if(!localStorage.getItem(CRED_KEY)){bioBtn.textContent='Set up Face ID';}
+  bioBtn.addEventListener('click',bioUnlock);
+  document.getElementById('lockPin').addEventListener('click',pinUnlock);
+})();
 
 // ---- auto-update: reload when a newer deploy is live ----
 let appEtag = null;
