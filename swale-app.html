@@ -1135,6 +1135,7 @@ body {
     <div class="setting-row"><span class="setting-label">Plan</span><span class="setting-value">Swale Pro — $15/mo</span></div>
     <div class="setting-row"><span class="setting-label">Rain Check</span><span class="setting-value" style="color:var(--amber)">Active — $100 credit</span></div>
     <div class="setting-row"><span class="setting-label">Support</span><span class="setting-value" style="color:var(--green)">jack@swale.bio</span></div>
+    <div class="setting-row"><span class="setting-label">App version</span><span class="setting-value" id="settBuild">--</span></div>
   </div>
 </div>
 
@@ -2137,6 +2138,23 @@ window.addEventListener('DOMContentLoaded', () => {
   fetchWeather();
   setInterval(fetchWeather, 15 * 60 * 1000);
 });
+
+// ---- auto-update: reload when a newer deploy is live ----
+let appEtag = null;
+async function checkForUpdate() {
+  try {
+    const r = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' });
+    const et = r.headers.get('etag');
+    if (!et) return;
+    const v = document.getElementById('settBuild');
+    if (v) v.textContent = et.replace(/[W/"]/g, '').slice(0, 10);
+    if (appEtag && et !== appEtag) { location.reload(); return; }
+    appEtag = et;
+  } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
+setInterval(checkForUpdate, 10 * 60 * 1000);
+checkForUpdate();
 </script>
 </body>
 </html>
